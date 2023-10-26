@@ -6,10 +6,9 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.annotation.ComponentScan;
 
 import javax.annotation.PostConstruct;
-import java.awt.*;
 
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.nimrod.rsock.publisher","com.nimrod.rsock.test.server"})
+@ComponentScan(basePackages = {"com.nimrodtechs.rsock.publisher","com.nimrodtechs.rsock.test.server"})
 public class ServerAndPublisherApplication {
     @Autowired
     ServerAndPublisherGui serverAndPublisherGui;
