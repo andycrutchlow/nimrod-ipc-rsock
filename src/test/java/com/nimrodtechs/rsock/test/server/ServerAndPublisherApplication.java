@@ -9,7 +9,8 @@ import javax.annotation.PostConstruct;
 import java.awt.*;
 
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.nimrodtechs.rsock.publisher","com.nimrodtechs.rsock.test.server"})
+//@ComponentScan(basePackages = {"com.nimrodtechs.rsock.publisher","com.nimrodtechs.rsock.test.server"})
+@ComponentScan(basePackages = {"com.nimrodtechs.ipcrsock","com.nimrodtechs.rsock.test.server"})
 public class ServerAndPublisherApplication {
     @Autowired
     ServerAndPublisherGui serverAndPublisherGui;

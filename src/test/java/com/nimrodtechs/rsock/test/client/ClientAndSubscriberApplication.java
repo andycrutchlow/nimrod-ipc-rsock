@@ -9,7 +9,9 @@ import javax.annotation.PostConstruct;
 import java.awt.*;
 
 @SpringBootApplication
-@ComponentScan(basePackages = {"com.nimrodtechs.rsock.subscriber","com.nimrodtechs.rsock.client","com.nimrodtechs.rsock.common","com.nimrodtechs.rsock.test.client"})
+//@ComponentScan(basePackages = {"com.nimrodtechs.rsock.subscriber","com.nimrodtechs.rsock.client","com.nimrodtechs.rsock.common","com.nimrodtechs.rsock.test.client"})
+@ComponentScan(basePackages = {"com.nimrodtechs.ipcrsock","com.nimrodtechs.rsock.test.client"})
+
 public class ClientAndSubscriberApplication {
     @Autowired
     ClientAndSubscriberGui clientAndSubscriberGui;
