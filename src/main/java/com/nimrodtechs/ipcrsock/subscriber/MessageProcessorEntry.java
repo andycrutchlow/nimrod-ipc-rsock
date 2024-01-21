@@ -13,6 +13,7 @@ class MessageProcessorEntry {
 
     AtomicBoolean inProgressIndicator = new AtomicBoolean(false);
     protected Queue<PublisherPayload> messages;
+
     //protected PublisherPayload[] conflatedMessages;
     MessageProcessorEntry(MessageReceiverInterface messageReceiver, QueueExecutor queueExecutor) {
         this.messageReceiver = messageReceiver;
@@ -27,6 +28,5 @@ class MessageProcessorEntry {
     public AtomicBoolean getInProgressIndicator() {
         return inProgressIndicator;
     }
-
 
 }

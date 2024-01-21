@@ -1,15 +1,16 @@
 package com.nimrodtechs.ipcrsock.serialization;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.serializers.FieldSerializer;
-import com.esotericsoftware.kryo.unsafe.UnsafeInput;
-import com.esotericsoftware.kryo.unsafe.UnsafeOutput;
+
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
 
+import com.esotericsoftware.kryo.kryo5.Kryo;
+import com.esotericsoftware.kryo.kryo5.serializers.FieldSerializer;
+import com.esotericsoftware.kryo.kryo5.unsafe.UnsafeInput;
+import com.esotericsoftware.kryo.kryo5.unsafe.UnsafeOutput;
 import org.hibernate.collection.internal.*;
 public class KryoCommon {
 
@@ -25,7 +26,7 @@ public class KryoCommon {
         // kryo.register(YourClass.class);
         kryo.register(BigDecimal.class);
         kryo.register(Date.class);
-        kryo.register(Class.class, new ClassSerializer());
+        //kryo.register(Class.class, new ClassSerializer());
         kryo.register(HashMap.class);
         kryo.register(HashSet.class);
         kryo.register(Boolean[].class);

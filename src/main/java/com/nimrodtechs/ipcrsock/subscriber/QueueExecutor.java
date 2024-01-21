@@ -145,10 +145,13 @@ public abstract class QueueExecutor implements Thread.UncaughtExceptionHandler {
         public void run() {
             PublisherPayload publisherPayload;
             // When there is no more outstanding work then exit this thread
-            while ((publisherPayload = getNextMessage(mpe)) != null) {
-                mpe.messageReceiver.messageReceived(publisherName, publisherPayload.getSubject(), publisherPayload.getPayload());
+            try {
+                while ((publisherPayload = getNextMessage(mpe)) != null) {
+                    mpe.messageReceiver.messageReceived(publisherName, publisherPayload.getSubject(), publisherPayload.getPayload());
+                }
+            } finally {
+                mpe.getInProgressIndicator().set(false);
             }
-            mpe.getInProgressIndicator().set(false);
         }
     }
 

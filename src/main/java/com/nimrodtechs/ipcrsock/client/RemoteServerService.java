@@ -30,39 +30,11 @@ public class RemoteServerService {
     @Autowired
     RemoteServerProperties remoteServerProperties;
 
-    static class RemoteServerInfo {
-
-        private String name;
-        private String host;
-        private int port;
-        private int maxConcurrentCalls;
-        //Override keepAliveWaitTime with a large number if you expect to use debugger in server side with breakpoints
-        private int keepAliveWaitTime = 7200;
-        private int keepAliveInterval = 2;
-        private int retryReconnectInterval = 0;
-        private long retryMaxAttempts =0;
-
-        GenericObjectPool<RSocketRequester> connectionPool;
-
-        public RemoteServerInfo(String name, String host, int port, int maxConcurrentCalls) {
-            this.name = name;
-            this.host = host;
-            this.port = port;
-            this.maxConcurrentCalls = maxConcurrentCalls;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public GenericObjectPool<RSocketRequester> getConnectionPool() {
-            return connectionPool;
-        }
-
-        void setConnectionPool(GenericObjectPool<RSocketRequester> connectionPool) {
-            this.connectionPool = connectionPool;
-        }
+    boolean forwardingMode = false;
+    public void setForwardingMode(boolean forwardingMode) {
+        this.forwardingMode = forwardingMode;
     }
+
 
     private Map<String, RemoteServerInfo> remoteServerInfoMap = new HashMap<>();
 
@@ -79,25 +51,34 @@ public class RemoteServerService {
             //Optional extra settings
             if (items.length > 4) {
                 //Set this with a large number if you expect to use debugger in server side with breakpoints
-                remoteServerInfo.keepAliveWaitTime = Integer.valueOf(items[4]);
+                remoteServerInfo.setKeepAliveWaitTime(Integer.valueOf(items[4]));
             }
             if (items.length > 5) {
-                remoteServerInfo.keepAliveInterval = Integer.valueOf(items[5]);
+                remoteServerInfo.setKeepAliveInterval(Integer.valueOf(items[5]));
             }
             if (items.length > 6) {
-                remoteServerInfo.retryMaxAttempts = Integer.valueOf(items[6]);
+                remoteServerInfo.setRetryMaxAttempts(Integer.valueOf(items[6]));
             }
             if (items.length > 7) {
-                remoteServerInfo.retryReconnectInterval = Integer.valueOf(items[7]);
+                remoteServerInfo.setRetryReconnectInterval(Integer.valueOf(items[7]));
             }
-            remoteServerInfo.setConnectionPool(getConnectPool(remoteServerInfo));
-            remoteServerInfoMap.put(remoteServerInfo.getName(), remoteServerInfo);
+            addRemoteServer(remoteServerInfo);
         }
+    }
+
+    /**
+     * * This is able to be called programatically to setup new connections on demand
+     * @param remoteServerInfo
+     * @throws Exception
+     */
+    public void addRemoteServer(RemoteServerInfo remoteServerInfo) throws Exception {
+        remoteServerInfo.setConnectionPool(getConnectPool(remoteServerInfo));
+        remoteServerInfoMap.put(remoteServerInfo.getName(), remoteServerInfo);
     }
 
     private GenericObjectPool<RSocketRequester> getConnectPool(RemoteServerInfo remoteServerInfo) throws Exception {
         GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
-        poolConfig.setMaxTotal(remoteServerInfo.maxConcurrentCalls);
+        poolConfig.setMaxTotal(remoteServerInfo.getMaxConcurrentCalls());
         poolConfig.setJmxEnabled(false);
         GenericObjectPool<RSocketRequester> pool = new GenericObjectPool<>(new PoolConnectionFactory(remoteServerInfo), poolConfig);
         //Initialize pool now with 4 pooled objects
@@ -106,11 +87,11 @@ public class RemoteServerService {
                 RSocketRequester myObject = pool.borrowObject();
                 pool.returnObject(myObject);
             } catch (Exception ex) {
-                log.error("Error during initialization of Remote Server connection to " + remoteServerInfo.name + " host:" + remoteServerInfo.host + " port:" + remoteServerInfo.port);
+                log.error("Error during initialization of Remote Server connection to " + remoteServerInfo.getName() + " host:" + remoteServerInfo.getHost() + " port:" + remoteServerInfo.getPort());
                 throw ex;
             }
         }
-        log.info("Initialized " + remoteServerInfo.maxConcurrentCalls + " connections to server " + remoteServerInfo.getName() + ":" + remoteServerInfo.host + ":" + remoteServerInfo.port);
+        log.info("Initialized " + remoteServerInfo.getMaxConcurrentCalls() + " connections to server " + remoteServerInfo.getName() + ":" + remoteServerInfo.getHost() + ":" + remoteServerInfo.getPort());
         return pool;
     }
 
@@ -174,14 +155,14 @@ public class RemoteServerService {
         return builder
                 .rsocketConnector(
                         rSocketConnector -> {
-                            rSocketConnector.keepAlive(Duration.ofSeconds(remoteServerInfo.keepAliveInterval), Duration.ofSeconds(remoteServerInfo.keepAliveWaitTime));
+                            rSocketConnector.keepAlive(Duration.ofSeconds(remoteServerInfo.getKeepAliveInterval()), Duration.ofSeconds(remoteServerInfo.getKeepAliveWaitTime()));
                             rSocketConnector.reconnect(
-                                    Retry.backoff(remoteServerInfo.retryMaxAttempts, Duration.ofSeconds(remoteServerInfo.retryReconnectInterval))
+                                    Retry.backoff(remoteServerInfo.getRetryMaxAttempts(), Duration.ofSeconds(remoteServerInfo.getRetryReconnectInterval()))
                             );
                         })
                 .rsocketStrategies(strategies)
                 .dataMimeType(new MimeType("application", "x-kryo"))
-                .tcp(remoteServerInfo.host, remoteServerInfo.port);
+                .tcp(remoteServerInfo.getHost(), remoteServerInfo.getPort());
     }
 
 
@@ -196,20 +177,23 @@ public class RemoteServerService {
             //This will block if all(maxConcurrentCalls) of the resource pool rsocketrequestors are currently occupied
             rsReq = remoteServerInfo.connectionPool.borrowObject();
             RSocketRequester.RequestSpec requestSpec = rsReq.route(methodName);
-            T response = requestSpec.data(parameters).
-                    retrieveMono(responseClass)
-                    .onErrorResume(e -> {
-                        if (e.getClass().getName().equals("reactor.core.Exceptions$RetryExhaustedException")) {
-                            // Handle the closed channel condition, possibly by returning a fallback Mono or throwing a custom exception
-                            resetConnectionPool.set(true);
+            T response = null;
+            if(forwardingMode) {
+            } else {
+                response = requestSpec.data(parameters).
+                        retrieveMono(responseClass)
+                        .onErrorResume(e -> {
+                            if (e.getClass().getName().equals("reactor.core.Exceptions$RetryExhaustedException")) {
+                                // Handle the closed channel condition, possibly by returning a fallback Mono or throwing a custom exception
+                                resetConnectionPool.set(true);
 
-                            return Mono.error(new Exception("Channel was closed!"));
-                        }
-                        // If the error is not the one we're looking for, propagate it unchanged
-                        return Mono.error(e);
-                    })
-                    .block();
-
+                                return Mono.error(new Exception("Channel was closed!"));
+                            }
+                            // If the error is not the one we're looking for, propagate it unchanged
+                            return Mono.error(e);
+                        })
+                        .block();
+            }
             return response;
         } catch (Exception ex) {
             throw ex;

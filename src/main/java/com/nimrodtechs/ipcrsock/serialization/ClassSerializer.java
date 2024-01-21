@@ -16,16 +16,21 @@
 
 package com.nimrodtechs.ipcrsock.serialization;
 
-import com.esotericsoftware.kryo.Kryo;
-import com.esotericsoftware.kryo.Serializer;
-import com.esotericsoftware.kryo.io.Input;
-import com.esotericsoftware.kryo.io.Output;
+import com.esotericsoftware.kryo.kryo5.Kryo;
+import com.esotericsoftware.kryo.kryo5.Serializer;
+import com.esotericsoftware.kryo.kryo5.io.Input;
+import com.esotericsoftware.kryo.kryo5.io.Output;
 
 
 /**
  * ClassSerializer serialize java Class
  */
 public class ClassSerializer extends Serializer {
+
+//    @Override
+//    public void write(Kryo kryo, Output output, Object o) {
+//
+//    }
 
     @Override
     public Object read(Kryo arg0, Input input, Class arg2) {

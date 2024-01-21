@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.rsocket.RSocketRequester;
 import org.springframework.messaging.rsocket.RSocketStrategies;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
 import reactor.core.Disposable;
@@ -23,6 +22,9 @@ public class SubscriberService {
 
     @Value("${spring.application.name:#{null}}")
     String subscriberProcessName;
+
+    @Value("${nimrod.rsock.subscriberName:#{null}}")
+    String subscriberProcessNameOverride;
 
     @Autowired
     private SubscriberProperties subscriberProperties;
@@ -76,7 +78,7 @@ public class SubscriberService {
             this.port = port;
             conflatingQueueExecutor = new ConflatingExecutor(name);
             sequentialQueueExecutor = new SequentialExecutor(name);
-            reSubscribeTimer = new Timer(name+"-reconnect-task",false);
+            reSubscribeTimer = new Timer(name+"-reconnect-task",true);
         }
 
         String getName() {
@@ -149,8 +151,11 @@ public class SubscriberService {
     @PostConstruct
     void init() throws NimrodPubSubException {
         if(subscriberProperties.getSetup() == null) {
-            //Quietly return and don't attempt to set up subscriber connections
+            //Quietly return and don't attempt to set up subscriber connections or assume that subscriber connections will be set up programatically
             return;
+        }
+        if(subscriberProcessNameOverride != null) {
+            subscriberProcessName = subscriberProcessNameOverride;
         }
         if(subscriberProcessName == null) {
             log.error("If subscriberProperties are provided then property or VM param spring.application.name must be supplied");
@@ -158,10 +163,22 @@ public class SubscriberService {
         }
         for (String subscriberInfoItems : subscriberProperties.getSetup()) {
             String[] items = subscriberInfoItems.split(",");
-            SubscriberConnectionInfo subscriberConnectionInfo = new SubscriberConnectionInfo(items[0], items[1], Integer.valueOf(items[2]));
-            subscriberConnectionInfo.setrSocketRequester(getRSocketRequester(subscriberConnectionInfo));
-            subscriberInfoMap.put(subscriberConnectionInfo.getName(), subscriberConnectionInfo);
+            addSubscriberSocket(subscriberProcessName,items[0], items[1], Integer.valueOf(items[2]));
         }
+    }
+
+    public void addSubscriberSocket(String subscriberNameOnDemand, String name, String host, int port) throws NimrodPubSubException {
+        SubscriberConnectionInfo subscriberConnectionInfo = new SubscriberConnectionInfo(name,host,port);
+        if(subscriberProcessName == null) {
+            subscriberProcessName = subscriberNameOnDemand;
+        } else {
+            if(subscriberProcessName.equals(subscriberNameOnDemand) == false) {
+                //Thats a problem !!!
+                throw new NimrodPubSubException("You cannot change subscriberProcessName["+subscriberProcessName+"] to ["+subscriberNameOnDemand+"]");
+            }
+        }
+        subscriberConnectionInfo.setrSocketRequester(getRSocketRequester(subscriberConnectionInfo));
+        subscriberInfoMap.put(subscriberConnectionInfo.getName(), subscriberConnectionInfo);
     }
 
     private RSocketRequester getRSocketRequester(SubscriberConnectionInfo subscriberConnectionInfo) {
@@ -190,9 +207,9 @@ public class SubscriberService {
             throw new NimrodPubSubException(publisherName+" is not a valid publisher to send subscribe "+aSubject+" to");
         }
         List<MessageProcessorEntry> messageProcessorEntries;
-        boolean wildcard = aSubject.endsWith(".*");
+        boolean wildcard = aSubject.endsWith("*");
         if(wildcard) {
-            messageProcessorEntries = subscriberConnectionInfo.wildcardListeners.get(aSubject);
+            messageProcessorEntries = subscriberConnectionInfo.wildcardListeners.get(aSubject.replace("*",""));
         } else {
             messageProcessorEntries = subscriberConnectionInfo.subjectListeners.get(aSubject);
         }
@@ -203,7 +220,7 @@ public class SubscriberService {
         if(messageProcessorEntries == null) {
             messageProcessorEntries = new ArrayList<>();
             if(wildcard) {
-                subscriberConnectionInfo.wildcardListeners.put(aSubject, messageProcessorEntries);
+                subscriberConnectionInfo.wildcardListeners.put(aSubject.replace("*",""), messageProcessorEntries);
             } else {
                 subscriberConnectionInfo.subjectListeners.put(aSubject, messageProcessorEntries);
             }
@@ -212,8 +229,8 @@ public class SubscriberService {
             log.info(publisherName+" subject["+aSubject+"] listener "+listener.toString()+" already present : IGNORE");
             return;
         }
-
-        messageProcessorEntries.add(new MessageProcessorEntry(listener,conflate ? subscriberConnectionInfo.conflatingQueueExecutor: subscriberConnectionInfo.sequentialQueueExecutor));
+        MessageProcessorEntry messageProcessorEntry = new MessageProcessorEntry(listener,conflate ? subscriberConnectionInfo.conflatingQueueExecutor: subscriberConnectionInfo.sequentialQueueExecutor);
+        messageProcessorEntries.add(messageProcessorEntry);
 
         SubscriptionRequest subscriptionRequest = new SubscriptionRequest(SubscriptionDirective.REQUEST,subscriberProcessName,aSubject,wildcard);
         SubscriptionInfo<T> subscriptionInfo = new SubscriptionInfo(aSubject,payloadClass,subscriptionRequest);
@@ -224,7 +241,9 @@ public class SubscriberService {
 
     private Disposable establishFlux(SubscriberConnectionInfo subscriberConnectionInfo, SubscriptionInfo subscriptionInfo) {
         RSocketRequester.RequestSpec requestSpec = subscriberConnectionInfo.getRSocketRequester().route(subscriberConnectionInfo.getName());
-        Disposable disposable = requestSpec.data(subscriptionInfo.originalSubscriptionRequest).retrieveFlux(subscriptionInfo.payloadClass)
+        //Disposable disposable = requestSpec.data(subscriptionInfo.originalSubscriptionRequest).retrieveFlux(subscriptionInfo.payloadClass)
+        Disposable disposable = requestSpec.data(subscriptionInfo.originalSubscriptionRequest).retrieveFlux(PublisherPayload.class)
+
 //                .doOnSubscribe(subscription -> {
 //                    clientSubscriptions.put(publisherName+":"+aSubject, subscription);
 //                })
@@ -273,7 +292,7 @@ public class SubscriberService {
         }
         List<MessageProcessorEntry> messageProcessorEntries;
         if(aSubject.endsWith("*")) {
-            messageProcessorEntries = subscriberConnectionInfo.wildcardListeners.get(aSubject);
+            messageProcessorEntries = subscriberConnectionInfo.wildcardListeners.get(aSubject.replace("*",""));
         } else {
             messageProcessorEntries = subscriberConnectionInfo.subjectListeners.get(aSubject);
         }
@@ -306,7 +325,7 @@ public class SubscriberService {
             requestSpec.data(new SubscriptionRequest(SubscriptionDirective.CANCEL,subscriberProcessName,aSubject)).send().subscribe();
             //TODO TEst this !!!!
             if(aSubject.endsWith("*")) {
-                subscriberConnectionInfo.wildcardListeners.remove(aSubject);
+                subscriberConnectionInfo.wildcardListeners.remove(aSubject.replace("*",""));
             } else {
                 subscriberConnectionInfo.subjectListeners.remove(aSubject);
             }
@@ -329,8 +348,7 @@ public class SubscriberService {
             for (Iterator<Map.Entry<String, List<MessageProcessorEntry>>> it = subscriberConnectionInfo.wildcardListeners.entrySet().iterator(); it.hasNext(); ) {
                 //PublisherSocketImpl.SubscriberFluxInfo sfi = it.next().getValue();
                 Map.Entry<String, List<MessageProcessorEntry>> next = it.next();
-                String modifiedSubject = originalSubject.contains("*") ? next.getKey().substring(0,originalSubject.lastIndexOf("*")) : originalSubject;
-                if(publisherPayload.getSubject().length() > modifiedSubject.length() && publisherPayload.getSubject().startsWith(modifiedSubject)) {
+                if(publisherPayload.getSubject().length() > next.getKey().length() && publisherPayload.getSubject().startsWith(next.getKey()) ) {
                     for(MessageProcessorEntry messageProcessorEntry : next.getValue()) {
                         listenersToBeNotified.add(messageProcessorEntry);
                     }

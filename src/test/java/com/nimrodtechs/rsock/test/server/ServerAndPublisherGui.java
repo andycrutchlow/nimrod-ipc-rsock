@@ -3,11 +3,14 @@ package com.nimrodtechs.rsock.test.server;
 import com.intellij.uiDesigner.core.GridConstraints;
 import com.intellij.uiDesigner.core.GridLayoutManager;
 import com.intellij.uiDesigner.core.Spacer;
+import com.nimrodtechs.ipcrsock.server.ManualRsocketServer;
 import com.nimrodtechs.rsock.test.model.MarketData;
 import com.nimrodtechs.ipcrsock.publisher.PublisherSocketImpl;
 import com.nimrodtechs.ipcrsock.common.SubscriptionListener;
 import com.nimrodtechs.ipcrsock.common.SubscriptionRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -18,6 +21,7 @@ import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.Random;
+import java.util.TimeZone;
 
 @Component
 public class ServerAndPublisherGui extends JDialog implements SubscriptionListener {
@@ -29,15 +33,38 @@ public class ServerAndPublisherGui extends JDialog implements SubscriptionListen
     private JTextField txtSubject;
     private JTextField txtData;
     private JButton publishButton;
+    private JTextField txtPort;
+    private JButton btnStart;
+    private JTextArea textArea1;
+
+    @Value("${nimrod.rsock.serverName:#{null}}")
+    String serverName;
+
+    @Value("${spring.rsocket.server.port:#{null}}")
+    String serverPort;
 
     @Autowired
     PublisherSocketImpl publisherSocket;
+
+    @Autowired(required = false)
+    ManualRsocketServer manualRsocketServer;
 
     private DefaultListModel subscriptionList = new DefaultListModel();
     private static final int BOUND = 100;
     private Random random = new Random();
 
     public ServerAndPublisherGui() {
+        btnStart.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    manualRsocketServer.startListeningWithPort(Integer.valueOf(txtPort.getText()));
+                } catch (Exception ex) {
+                    //show something u=in GUI
+                    ex.printStackTrace();
+                }
+            }
+        });
     }
 
     @PostConstruct
@@ -93,6 +120,8 @@ public class ServerAndPublisherGui extends JDialog implements SubscriptionListen
         publisherSocket.addSubscriptionListener(this);
         listSubscriptions.setModel(subscriptionList);
         listSubscriptions.setCellRenderer(new CustomListBoxRenderer());
+
+        tabbedPane1.setTitleAt(1, "RMI Server:" + serverName + ":" + (serverPort == null ? "manual" : serverPort));
     }
 
     private void onOK() {
@@ -118,6 +147,19 @@ public class ServerAndPublisherGui extends JDialog implements SubscriptionListen
         dialog.setVisible(true);
         System.exit(0);
     }
+
+    class CustomListBoxRenderer extends DefaultListCellRenderer {
+        @Override
+        public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                                                               boolean isSelected, boolean cellHasFocus) {
+            if (value instanceof SubscriptionRequest) {
+                value = ((SubscriptionRequest) value).getRequestor() + ":" + ((SubscriptionRequest) value).getSubject();
+            }
+            return super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+        }
+
+    }
+
 
     @Override
     public void onSubscription(SubscriptionRequest subscriptionRequest) {
@@ -197,8 +239,29 @@ public class ServerAndPublisherGui extends JDialog implements SubscriptionListen
         publishButton.setText("Publish");
         panel6.add(publishButton, new GridConstraints(0, 1, 1, 1, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         final JPanel panel7 = new JPanel();
-        panel7.setLayout(new GridLayoutManager(1, 1, new Insets(0, 0, 0, 0), -1, -1));
+        panel7.setLayout(new BorderLayout(0, 0));
         tabbedPane1.addTab("RMI Server", panel7);
+        final JPanel panel8 = new JPanel();
+        panel8.setLayout(new GridLayoutManager(1, 3, new Insets(0, 0, 0, 0), -1, -1));
+        panel7.add(panel8, BorderLayout.NORTH);
+        final JLabel label3 = new JLabel();
+        label3.setText("Port");
+        panel8.add(label3, new GridConstraints(0, 0, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        txtPort = new JTextField();
+        panel8.add(txtPort, new GridConstraints(0, 1, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_FIXED, null, new Dimension(150, -1), null, 0, false));
+        btnStart = new JButton();
+        btnStart.setText("Start");
+        panel8.add(btnStart, new GridConstraints(0, 2, 1, 1, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        final JPanel panel9 = new JPanel();
+        panel9.setLayout(new GridLayoutManager(1, 1, new Insets(0, 0, 0, 0), -1, -1));
+        panel7.add(panel9, BorderLayout.SOUTH);
+        final JPanel panel10 = new JPanel();
+        panel10.setLayout(new BorderLayout(0, 0));
+        panel7.add(panel10, BorderLayout.CENTER);
+        final JScrollPane scrollPane1 = new JScrollPane();
+        panel10.add(scrollPane1, BorderLayout.CENTER);
+        textArea1 = new JTextArea();
+        scrollPane1.setViewportView(textArea1);
     }
 
     /**
@@ -208,15 +271,4 @@ public class ServerAndPublisherGui extends JDialog implements SubscriptionListen
         return contentPane;
     }
 
-    class CustomListBoxRenderer extends DefaultListCellRenderer {
-        @Override
-        public java.awt.Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                               boolean isSelected, boolean cellHasFocus) {
-            if (value instanceof SubscriptionRequest) {
-                value = ((SubscriptionRequest) value).getRequestor() + ":" + ((SubscriptionRequest) value).getSubject();
-            }
-            return super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-        }
-
-    }
 }

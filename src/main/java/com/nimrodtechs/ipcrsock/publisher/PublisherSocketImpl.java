@@ -23,6 +23,7 @@ import reactor.core.scheduler.Schedulers;
 
 import javax.annotation.PostConstruct;
 import java.util.*;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
@@ -84,11 +85,11 @@ public class PublisherSocketImpl implements SocketAcceptor {
         SubscriberFluxInfo subscriberFluxInfo;
         if(subscriptionRequest.isWildcard()) {
             subscriberFluxInfo = wildcardProcessors.computeIfAbsent(subscriptionRequest.getSubject(), s -> {
-                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), DirectProcessor.create(),subscriptionRequest.getSubject());
+                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
             });
         } else {
             subscriberFluxInfo = subjectProcessors.computeIfAbsent(subscriptionRequest.getSubject(), s -> {
-                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), DirectProcessor.create(),subscriptionRequest.getSubject());
+                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
             });
         }
 //        if(subscriptionRequest.isWildcard()) {
@@ -100,16 +101,30 @@ public class PublisherSocketImpl implements SocketAcceptor {
 //                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), Sinks.many().multicast().onBackpressureBuffer(),subscriptionRequest.getSubject());
 //            });
 //        }
-        subscriberFluxInfo.directProcessor.doOnCancel(() -> {
-            System.out.println(subscriptionRequest+" hase been canceled");
-        });
-        if(subscriberFluxInfo.subscriberNames.contains(subscriptionRequest.getRequestor()) == false) {
-            subscriberFluxInfo.subscriberNames.add(subscriptionRequest.getRequestor());
-        }
         //TODO delegate this to thread
         notifyListeners(subscriptionRequest);
         return subscriberFluxInfo.directProcessor;
         //return subscriberFluxInfo.sink.asFlux();
+    }
+
+    private static <E> DirectProcessor<E> getDirectProcessor(SubscriptionRequest subscriptionRequest) {
+        DirectProcessor directProcessor = DirectProcessor.create();
+        directProcessor.doOnCancel(() -> {
+            System.out.println(subscriptionRequest+" has been canceled");
+        });
+        directProcessor.doOnError(error -> {
+            if (error instanceof CancellationException) {
+                System.out.println(subscriptionRequest.toString()+" Subscription was cancelled");
+            } else {
+                System.err.println(subscriptionRequest.toString()+" An error occurred: " + error);
+            }
+        });
+        directProcessor.doOnComplete(() -> {
+            System.out.println(subscriptionRequest+" has been completed");
+        });
+
+        return directProcessor;
+
     }
 
     public void removeDirectProcessor(SubscriptionRequest subscriptionRequest) {

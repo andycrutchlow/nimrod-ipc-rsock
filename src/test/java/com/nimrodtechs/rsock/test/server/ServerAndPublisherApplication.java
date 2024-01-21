@@ -16,10 +16,15 @@ public class ServerAndPublisherApplication {
     ServerAndPublisherGui serverAndPublisherGui;
 
     public static void main(String[] args) {
+//        String[] profiles = args.length>0 ? new String[2] : new String[1];
+//        profiles[0] = "serverAndPublisher";
+//        if(args.length > 0) {
+//            profiles[1] = args[0];
+//        }
         new SpringApplicationBuilder()
                 .main(ServerAndPublisherApplication.class)
                 .sources(ServerAndPublisherApplication.class)
-                .profiles("serverAndPublisher")
+//                .profiles(profiles)
                 .run(args);
 
     }
