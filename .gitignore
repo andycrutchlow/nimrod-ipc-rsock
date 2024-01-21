@@ -4,6 +4,7 @@ target/
 *.iml
 *.iws
 *.ipr
+*.log
 .flattened-pom.xml
 */.flattened-pom.xml
 
