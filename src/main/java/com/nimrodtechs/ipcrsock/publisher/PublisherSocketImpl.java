@@ -32,6 +32,12 @@ public class PublisherSocketImpl implements SocketAcceptor {
     @Value("${nimrod.rsock.publisher.port:-1}")
     int publisherPort;
 
+    private static int logLevel = 0;
+
+    public static void setLogLevel(int logLevel) {
+        PublisherSocketImpl.logLevel = logLevel;
+    }
+
     class SubscriberFluxInfo {
         String subscriberName;
         String modifiedSubject;
@@ -161,6 +167,9 @@ public class PublisherSocketImpl implements SocketAcceptor {
         if(publisherPort == -1) {
             log.warn("publish called subject="+subject+" class="+data.getClass().getSimpleName()+" but no nimrod.rsock.publisher.port called - IGNORED");
             return;
+        }
+        if(logLevel > 0) {
+            log.info("PUBLISH:[{}]:[{}]",subject,data.toString());
         }
         Payload payloadData = null;
         SubscriberFluxInfo subscriberFluxInfo = subjectProcessors.get(subject);
