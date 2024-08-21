@@ -12,6 +12,7 @@ import reactor.core.Disposable;
 import reactor.util.retry.Retry;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.nio.channels.ClosedChannelException;
 import java.time.Duration;
 import java.util.*;
@@ -125,7 +126,13 @@ public class SubscriberService {
                 }
                 sb.append(subscription);
             });
-            log.info("Try to resubscribe on publisher "+ subscriberConnectionInfo.getName()+" "+sb.toString());
+            subscriberConnectionInfo.wildcardListeners.keySet().forEach(subscription -> {
+                if(sb.length()>0) {
+                    sb.append(",");
+                }
+                sb.append(subscription+"*");
+            });
+            log.info("Try to resubscribe on publisher ["+ subscriberConnectionInfo.getName()+"] subscriptions["+sb.toString()+"]");
             if(subscriberConnectionInfo.getRSocketRequester() != null) {
                 subscriberConnectionInfo.getRSocketRequester().dispose();
             }
@@ -133,6 +140,17 @@ public class SubscriberService {
             for(String key : subscriberConnectionInfo.subjectListeners.keySet()) {
                 String fullKey = subscriberConnectionInfo.getName()+":"+key;
                 SubscriptionInfo subscriptionInfo = clientSubscriptions.get(fullKey);
+                if(subscriptionInfo != null) {
+                    if(subscriptionInfo.getDisposable().isDisposed() == false) {
+                        subscriptionInfo.getDisposable().dispose();
+                    }
+                    Disposable disposable = establishFlux(subscriberConnectionInfo,subscriptionInfo);
+                    subscriptionInfo.setDisposable(disposable);
+                }
+            }
+            for(String key : subscriberConnectionInfo.wildcardListeners.keySet()) {
+                String fullKey = subscriberConnectionInfo.getName()+":"+key;
+                SubscriptionInfo subscriptionInfo = clientSubscriptions.get(fullKey+"*");
                 if(subscriptionInfo != null) {
                     if(subscriptionInfo.getDisposable().isDisposed() == false) {
                         subscriptionInfo.getDisposable().dispose();
@@ -167,13 +185,20 @@ public class SubscriberService {
         }
     }
 
+    @PreDestroy
+    void destroy() {
+        log.info("Shutdown : subscriberInfoMap size="+subscriberInfoMap.size());
+        //subscriberInfoMap.entrySet().stream().forEach( entry -> entry.queueExecutor.process(publisherPayload,entry));
+
+    }
+
     public void addSubscriberSocket(String subscriberNameOnDemand, String name, String host, int port) throws NimrodPubSubException {
         SubscriberConnectionInfo subscriberConnectionInfo = new SubscriberConnectionInfo(name,host,port);
         if(subscriberProcessName == null) {
             subscriberProcessName = subscriberNameOnDemand;
         } else {
             if(subscriberProcessName.equals(subscriberNameOnDemand) == false) {
-                //Thats a problem !!!
+                //That's a problem !!!
                 throw new NimrodPubSubException("You cannot change subscriberProcessName["+subscriberProcessName+"] to ["+subscriberNameOnDemand+"]");
             }
         }
@@ -214,8 +239,6 @@ public class SubscriberService {
             messageProcessorEntries = subscriberConnectionInfo.subjectListeners.get(aSubject);
         }
 
-
-
         //TODO Check if this listener already exists
         if(messageProcessorEntries == null) {
             messageProcessorEntries = new ArrayList<>();
@@ -229,14 +252,24 @@ public class SubscriberService {
             log.info(publisherName+" subject["+aSubject+"] listener "+listener.toString()+" already present : IGNORE");
             return;
         }
+        //If this is NOT the first subscription to this subject then check the QueueExecutor is the same type - it must be! otherwise error
+        if(messageProcessorEntries.size() == 1) {
+            if( !((messageProcessorEntries.get(0).queueExecutor instanceof ConflatingExecutor && conflate) || (messageProcessorEntries.get(0).queueExecutor instanceof SequentialExecutor && conflate==false))){
+                log.info(publisherName+" subject["+aSubject+"] adding another listener BUT cannot have different type of QueueExecutor : IGNORE");
+                return;
+            }
+        }
         MessageProcessorEntry messageProcessorEntry = new MessageProcessorEntry(listener,conflate ? subscriberConnectionInfo.conflatingQueueExecutor: subscriberConnectionInfo.sequentialQueueExecutor);
         messageProcessorEntries.add(messageProcessorEntry);
-
-        SubscriptionRequest subscriptionRequest = new SubscriptionRequest(SubscriptionDirective.REQUEST,subscriberProcessName,aSubject,wildcard);
-        SubscriptionInfo<T> subscriptionInfo = new SubscriptionInfo(aSubject,payloadClass,subscriptionRequest);
-        subscriptionInfo.setDisposable(establishFlux(subscriberConnectionInfo,subscriptionInfo));
-        clientSubscriptions.put(publisherName+":"+aSubject, subscriptionInfo);
-        log.info("SUBSCRIBE TO:"+publisherName+" "+" subject["+subscriptionRequest.getSubject()+"] Dispatcher:"+(conflate ? "conflate":"sequential"));
+        if(messageProcessorEntries.size() == 1) {
+            SubscriptionRequest subscriptionRequest = new SubscriptionRequest(SubscriptionDirective.REQUEST, subscriberProcessName, aSubject, wildcard);
+            SubscriptionInfo<T> subscriptionInfo = new SubscriptionInfo(aSubject, payloadClass, subscriptionRequest);
+            subscriptionInfo.setDisposable(establishFlux(subscriberConnectionInfo, subscriptionInfo));
+            clientSubscriptions.put(publisherName + ":" + aSubject, subscriptionInfo);
+            log.info("SUBSCRIBED TO:" + publisherName + " " + " subject[" + subscriptionRequest.getSubject() + "] Dispatcher:" + (conflate ? "conflate" : "sequential"));
+        } else {
+            log.info("ADDED another listener for existing Subject["+ aSubject+"]");
+        }
     }
 
     private Disposable establishFlux(SubscriberConnectionInfo subscriberConnectionInfo, SubscriptionInfo subscriptionInfo) {

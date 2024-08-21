@@ -39,14 +39,13 @@ public class PublisherSocketImpl implements SocketAcceptor {
     }
 
     class SubscriberFluxInfo {
-        String subscriberName;
         String modifiedSubject;
+
         List<String> subscriberNames = new ArrayList<>();
         DirectProcessor<Payload> directProcessor;
         Sinks.Many<Payload> sink;
 
-        public SubscriberFluxInfo(String subscriberName, DirectProcessor<Payload> directProcessor, String unmodifiedSubject) {
-            this.subscriberName = subscriberName;
+        public SubscriberFluxInfo(DirectProcessor<Payload> directProcessor, String unmodifiedSubject) {
             this.directProcessor = directProcessor;
             if(unmodifiedSubject.endsWith("*")) {
                 modifiedSubject = unmodifiedSubject.substring(0,unmodifiedSubject.lastIndexOf("*"));
@@ -54,8 +53,7 @@ public class PublisherSocketImpl implements SocketAcceptor {
                 modifiedSubject = unmodifiedSubject;
             }
         }
-        public SubscriberFluxInfo(String subscriberName, Sinks.Many<Payload> sink, String unmodifiedSubject) {
-            this.subscriberName = subscriberName;
+        public SubscriberFluxInfo(Sinks.Many<Payload> sink, String unmodifiedSubject) {
             this.sink = sink;
             if(unmodifiedSubject.endsWith("*")) {
                 modifiedSubject = unmodifiedSubject.substring(0,unmodifiedSubject.lastIndexOf("*"));
@@ -63,9 +61,15 @@ public class PublisherSocketImpl implements SocketAcceptor {
                 modifiedSubject = unmodifiedSubject;
             }
         }
+        public List<String> getSubscriberNames() {
+            return subscriberNames;
+        }
+
+
     }
 
-
+    //TODO add a high level TYPE which represents the data class that is serialized...then split wildcardProcessors into map based on type
+    //to reduce the amount of iterating..
     private final Map<String, SubscriberFluxInfo> subjectProcessors = new ConcurrentHashMap<>();
     private final Map<String, SubscriberFluxInfo> wildcardProcessors = new ConcurrentHashMap<>();
 
@@ -91,11 +95,11 @@ public class PublisherSocketImpl implements SocketAcceptor {
         SubscriberFluxInfo subscriberFluxInfo;
         if(subscriptionRequest.isWildcard()) {
             subscriberFluxInfo = wildcardProcessors.computeIfAbsent(subscriptionRequest.getSubject(), s -> {
-                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
+                return new SubscriberFluxInfo(getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
             });
         } else {
             subscriberFluxInfo = subjectProcessors.computeIfAbsent(subscriptionRequest.getSubject(), s -> {
-                return new SubscriberFluxInfo(subscriptionRequest.getRequestor(), getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
+                return new SubscriberFluxInfo(getDirectProcessor(subscriptionRequest),subscriptionRequest.getSubject());
             });
         }
 //        if(subscriptionRequest.isWildcard()) {
@@ -109,6 +113,7 @@ public class PublisherSocketImpl implements SocketAcceptor {
 //        }
         //TODO delegate this to thread
         notifyListeners(subscriptionRequest);
+        subscriberFluxInfo.getSubscriberNames().add(subscriptionRequest.getRequestor());
         return subscriberFluxInfo.directProcessor;
         //return subscriberFluxInfo.sink.asFlux();
     }
@@ -151,11 +156,12 @@ public class PublisherSocketImpl implements SocketAcceptor {
                 } else {
                     subjectProcessors.remove(subscriptionRequest.getSubject());
                 }
+                log.info("REMOVED publishing of "+subscriptionRequest.getSubject()+" to "+subscriptionRequest.getRequestor());
+            } else {
+                log.info("REDUCED publishing of "+subscriptionRequest.getSubject()+" to "+subscriptionRequest.getRequestor()+", "+subscriberFluxInfo.subscriberNames.size()+" remain");
             }
             notifyListeners(subscriptionRequest);
-
         }
-
     }
 
     /**
@@ -179,7 +185,7 @@ public class PublisherSocketImpl implements SocketAcceptor {
             PublisherPayload publisherPayload = new PublisherPayload(System.nanoTime(),subject,data);
             payloadData = DefaultPayload.create(KryoEncoder.serialize(publisherPayload));
             subscriberFluxInfo.directProcessor.onNext(payloadData);
-            alreadySentSubscribers.add(subscriberFluxInfo.subscriberName);
+            alreadySentSubscribers.add(subscriberFluxInfo.getSubscriberNames().get(0));
         }
         if(wildcardProcessors.size() > 0) {
 // 2 versions ... I want the efficiency of only doing serialization once !!!
@@ -194,7 +200,8 @@ public class PublisherSocketImpl implements SocketAcceptor {
 
             for (Iterator<Map.Entry<String, SubscriberFluxInfo>> it = wildcardProcessors.entrySet().iterator(); it.hasNext(); ) {
                 SubscriberFluxInfo sfi  = it.next().getValue();
-                if(subject.startsWith(sfi.modifiedSubject) && ! alreadySentSubscribers.contains(sfi.subscriberName)){
+                //Trying to protect against re-sending data when there is an exact subject match from above AND a wildcard subscription below..not sure that using first SubscriberNames will work ???
+                if(subject.startsWith(sfi.modifiedSubject) && ! alreadySentSubscribers.contains(sfi.getSubscriberNames().get(0))){
                     //See if I have already serialized the payload
                     if(payloadData == null) {
                         PublisherPayload publisherPayload = new PublisherPayload(System.nanoTime(),subject,data);

@@ -20,7 +20,7 @@ public class ClientAndSubscriberApplication {
         new SpringApplicationBuilder()
                 .main(ClientAndSubscriberApplication.class)
                 .sources(ClientAndSubscriberApplication.class)
-//                .profiles("clientAndSubscriber")
+                .profiles("clientAndSubscriber")
                 .run(args);
 
     }
