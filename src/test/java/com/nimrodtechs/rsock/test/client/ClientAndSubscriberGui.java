@@ -10,6 +10,7 @@ import com.nimrodtechs.rsock.test.model.MarketData;
 import com.nimrodtechs.ipcrsock.subscriber.SubscriberService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -41,6 +42,9 @@ public class ClientAndSubscriberGui extends JDialog {
     private JButton subscribeButton2;
     private JButton unsubscribeButton2;
     private JCheckBox chkConflate2;
+
+    @Value("${spring.application.name:#{null}}")
+    String subscriberProcessName;
 
     @Autowired
     SubscriberService subscriberService;
@@ -78,6 +82,7 @@ public class ClientAndSubscriberGui extends JDialog {
 
     @PostConstruct
     void init() {
+        setTitle(subscriberProcessName);
         setContentPane(contentPane);
         setModal(true);
         getRootPane().setDefaultButton(buttonOK);
