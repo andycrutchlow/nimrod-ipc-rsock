@@ -11,8 +11,8 @@ import org.springframework.util.MimeType;
 import reactor.core.Disposable;
 import reactor.util.retry.Retry;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.nio.channels.ClosedChannelException;
 import java.time.Duration;
 import java.util.*;

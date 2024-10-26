@@ -11,7 +11,8 @@ import com.esotericsoftware.kryo.kryo5.Kryo;
 import com.esotericsoftware.kryo.kryo5.serializers.FieldSerializer;
 import com.esotericsoftware.kryo.kryo5.unsafe.UnsafeInput;
 import com.esotericsoftware.kryo.kryo5.unsafe.UnsafeOutput;
-import org.hibernate.collection.internal.*;
+import org.hibernate.collection.spi.*;
+
 public class KryoCommon {
 
     public ThreadLocal<KryoInfo> getKryoThreadLocal() {
