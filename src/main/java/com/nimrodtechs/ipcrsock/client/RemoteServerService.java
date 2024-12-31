@@ -47,20 +47,20 @@ public class RemoteServerService {
         }
         for (String remoteServerInfoItems : remoteServerProperties.getSetup()) {
             String[] items = remoteServerInfoItems.split(",");
-            RemoteServerInfo remoteServerInfo = new RemoteServerInfo(items[0], items[1], Integer.valueOf(items[2]), Integer.valueOf(items[3]));
+            RemoteServerInfo remoteServerInfo = new RemoteServerInfo(items[0], items[1], Integer.parseInt(items[2]), Integer.parseInt(items[3]));
             //Optional extra settings
             if (items.length > 4) {
                 //Set this with a large number if you expect to use debugger in server side with breakpoints
-                remoteServerInfo.setKeepAliveWaitTime(Integer.valueOf(items[4]));
+                remoteServerInfo.setKeepAliveWaitTime(Integer.parseInt(items[4]));
             }
             if (items.length > 5) {
-                remoteServerInfo.setKeepAliveInterval(Integer.valueOf(items[5]));
+                remoteServerInfo.setKeepAliveInterval(Integer.parseInt(items[5]));
             }
             if (items.length > 6) {
-                remoteServerInfo.setRetryMaxAttempts(Integer.valueOf(items[6]));
+                remoteServerInfo.setRetryMaxAttempts(Integer.parseInt(items[6]));
             }
             if (items.length > 7) {
-                remoteServerInfo.setRetryReconnectInterval(Integer.valueOf(items[7]));
+                remoteServerInfo.setRetryReconnectInterval(Integer.parseInt(items[7]));
             }
             addRemoteServer(remoteServerInfo);
         }
