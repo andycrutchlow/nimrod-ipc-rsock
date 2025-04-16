@@ -1,5 +1,5 @@
 # nimrod-ipc-rsock
-Nimrod Inter-Process Communication Mk 2
+Nimrod Inter-Process Communication Mk 2:
 This is a re-implementation of Nimrod IPC, originally based on ZeroMQ, now rebuilt using Spring Boot, RSocket, and Reactive Streams.
 
 This new version offers several advantages — primarily that it's now a Java-only solution, making it easier to deploy in environments already using the Spring/Spring Boot framework.
